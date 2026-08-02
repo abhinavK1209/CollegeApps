@@ -8,6 +8,28 @@ on:
 jobs:
   verify:
     runs-on: ubuntu-latest
+
+    # The build runs `prisma migrate deploy`, so CI needs a real database.
+    # This also lets migrations themselves be verified on every PR.
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: sequence
+          POSTGRES_PASSWORD: sequence
+          POSTGRES_DB: sequence
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U sequence -d sequence"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    env:
+      DATABASE_URL: postgresql://sequence:sequence@localhost:5432/sequence?schema=public
+      DATABASE_URL_UNPOOLED: postgresql://sequence:sequence@localhost:5432/sequence?schema=public
+
     steps:
       - uses: actions/checkout@v4
 
