@@ -23,7 +23,8 @@
     "db:seed": "tsx prisma/seed/index.ts",
     "db:reset": "prisma migrate reset --force",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "db:import:scorecard": "tsx prisma/seed/import-scorecard.ts"
   },
   "dependencies": {
     "@hookform/resolvers": "^3.9.1",
@@ -84,5 +85,8 @@
       "sharp",
       "unrs-resolver"
     ]
+  },
+  "prisma": {
+    "seed": "tsx prisma/seed/index.ts"
   }
 }
