@@ -1,6 +1,6 @@
 # 02 — Database Schema & ER Diagram
 
-PostgreSQL (Supabase) · Prisma ORM · strict typing end-to-end.
+PostgreSQL (Neon) · Prisma ORM · strict typing end-to-end.
 
 ## Design rules
 
@@ -17,8 +17,10 @@ PostgreSQL (Supabase) · Prisma ORM · strict typing end-to-end.
 6. **All timestamps `timestamptz`.** Deadlines additionally carry an IANA `timezone`
    string because "Jan 1, 11:59pm" means the *college's* midnight.
 7. **Soft delete** (`archivedAt`) on user-authored content; hard delete on join rows.
-8. **RLS on every user table** in Supabase, keyed on `user_id`, as defense in depth behind
-   the app's own authorization layer.
+8. **Every table stays `userId`-scoped even though the app is currently single-user.**
+   A fixed local user is seeded and every service takes a `userId` exactly as designed, so
+   adding real authentication later is a drop-in change with no migration and no service
+   rewrites.
 
 ---
 

@@ -39,7 +39,7 @@ deployable preview. Each bullet is roughly one commit.
 2. Design tokens, theme provider, dark mode, typography scale
 3. shadcn primitives, restyled to the token set
 4. AppShell: sidebar, topbar, layout, responsive breakpoints
-5. Prisma schema + first migration + Supabase connection
+5. Prisma schema + first migration + Neon connection
 6. Seed harness + ~200 colleges (expand to 2,000 later)
 
 **Phase 1 — Auth & profile**

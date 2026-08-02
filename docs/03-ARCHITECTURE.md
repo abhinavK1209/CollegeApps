@@ -11,8 +11,8 @@
 | Components | **shadcn/ui** (owned source, not a dependency) | We need to restyle deeply |
 | Motion | **Framer Motion** | Layout animations, shared-element transitions |
 | Icons | **Lucide** | Consistent 1.5px stroke |
-| DB | **Supabase Postgres** + **Prisma** | Prisma for typed access & migrations; Supabase for auth infra, RLS, storage, realtime |
-| Auth | **Auth.js v5** on Supabase Postgres | Credentials + Google + verification + reset in one adapter |
+| DB | **Neon Postgres** + **Prisma** | Serverless Postgres that scales to zero and wakes in ~1s — right shape for sporadic personal use. Prisma for typed access & migrations |
+| Auth | **Deferred** (Auth.js v5 later) | Runs single-user for now. All models and services stay `userId`-scoped so auth drops in with no migration |
 | Server state | **TanStack Query v5** | Cache, optimistic mutations, background refetch |
 | Forms | **React Hook Form** + **Zod** | One schema → client validation, server validation, and TS types |
 | Charts | **Recharts** | Composable, themeable |
@@ -124,7 +124,7 @@ onboarding/    completeOnboarding
 
 - Auth.js session cookies: `httpOnly`, `secure`, `sameSite=lax`.
 - **Every service call takes `userId` and scopes its query.** No handler ever trusts an ID
-  from the client without an ownership check. Supabase RLS is the second layer.
+  from the client without an ownership check.
 - Collaborator scopes enforced in the service layer via a `visibleScopes` guard —
   a parent's `GET /applications/:id` returns a *different shape*, not a hidden div.
 - Share links: hashed tokens, expiring, single-purpose, revocable.
