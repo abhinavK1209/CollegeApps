@@ -33,11 +33,47 @@ One opinion is encoded directly in the math: **"Submitted" caps an application a
 The last 10% is confirming the college actually received everything — which is where
 applications actually fail.
 
-## Planned stack
+## Stack
 
-Next.js 15 · React 19 · TypeScript (strict) · Tailwind · shadcn/ui · Framer Motion ·
-Prisma · Supabase Postgres · Auth.js · TanStack Query · React Hook Form · Zod ·
-Recharts · date-fns · UploadThing · Vercel
+Next.js 15 · React 19 · TypeScript (strict) · Tailwind v4 · shadcn/ui · Framer Motion ·
+Prisma · Neon Postgres · TanStack Query · React Hook Form · Zod · Recharts ·
+date-fns · Vercel
+
+Authentication is deliberately deferred — the app runs single-user for now. Every model
+and service is still scoped by `userId`, so auth drops in later with no migration.
+
+## Running locally
+
+```bash
+pnpm install
+cp .env.example .env.local
+pnpm db:up        # local Postgres in Docker (only needed once the schema lands)
+pnpm dev          # → http://localhost:3000
+```
+
+## Deploying to Vercel
+
+**1. Create the database.** At [neon.tech](https://neon.tech), create a project. Copy both
+connection strings from the dashboard:
+
+| Vercel env var | Which Neon string |
+|---|---|
+| `DATABASE_URL` | the **pooled** one (host contains `-pooler`) |
+| `DIRECT_URL` | the **direct** one (no `-pooler`) |
+
+Prisma runs queries through the pooler but migrations must bypass it, which is why both
+are needed.
+
+**2. Import the repo.** At [vercel.com/new](https://vercel.com/new), import
+`abhinavK1209/CollegeApps`. Framework preset is detected automatically; no build settings
+need changing.
+
+**3. Add the two environment variables** under Settings → Environment Variables, for all
+environments.
+
+**4. Deploy.** Every push to `main` ships to production; every PR gets a preview URL.
+
+Vercel's Hobby tier and Neon's free tier both cover a single-user personal project.
 
 ## Documents
 
