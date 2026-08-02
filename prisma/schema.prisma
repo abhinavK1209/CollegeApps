@@ -1,0 +1,1350 @@
+// Sequence — admissions operating system
+// See docs/02-DATA-MODEL.md for the design rules behind this schema.
+//
+// Principles enforced here:
+//   1. Reference data (College*Template) is global and cycle-versioned; user rows
+//      copy from it and record provenance, so seed updates never clobber overrides.
+//   2. Everything derived carries `origin`, `sourceTemplateId`, and `confidence`.
+//   3. Two-phase completion: requirements track submittedAt AND confirmedReceivedAt.
+//      Submission is not receipt — that gap is where applications actually fail.
+//   4. Money is integer cents. Never floats.
+//   5. Deadlines carry an IANA timezone: "Jan 1, 11:59pm" means the college's midnight.
+//   6. Every user-owned row is userId-scoped even though the app is single-user today,
+//      so authentication drops in later with no migration.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  // Migrations cannot run through a connection pooler. On Vercel this is the
+  // Neon integration's DATABASE_URL_UNPOOLED; locally it mirrors DATABASE_URL.
+  directUrl = env("DATABASE_URL_UNPOOLED")
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Enums
+// ─────────────────────────────────────────────────────────────────────────────
+
+enum Theme {
+  LIGHT
+  DARK
+  SYSTEM
+}
+
+enum DigestFrequency {
+  OFF
+  DAILY
+  WEEKLY
+}
+
+enum CitizenshipStatus {
+  US_CITIZEN
+  PERMANENT_RESIDENT
+  UNDOCUMENTED
+  DACA
+  INTERNATIONAL
+  OTHER
+}
+
+enum QuestBridgeStatus {
+  NOT_APPLICABLE
+  APPLICANT
+  FINALIST
+  MATCHED
+  NOT_SELECTED
+}
+
+enum TestType {
+  SAT
+  ACT
+  PSAT
+  AP
+  IB
+  TOEFL
+  IELTS
+  DUOLINGO
+  OTHER
+}
+
+enum TestSendStatus {
+  NOT_SENT
+  ORDERED
+  SENT
+  CONFIRMED
+}
+
+enum CollegeType {
+  PUBLIC
+  PRIVATE_NONPROFIT
+  PRIVATE_FORPROFIT
+}
+
+enum ApplicationPlatform {
+  COMMON_APP
+  COALITION
+  UC
+  APPLY_TEXAS
+  QUESTBRIDGE
+  DIRECT
+  OTHER
+}
+
+/// Binding rounds (ED1, ED2, QUESTBRIDGE_MATCH) and exclusive ones (REA/SCEA)
+/// drive the rule engine. See docs/00-RESEARCH.md §2.
+enum ApplicationRound {
+  ED1
+  ED2
+  EA
+  REA
+  SCEA
+  RD
+  ROLLING
+  QUESTBRIDGE_MATCH
+  PRIORITY
+  TRANSFER
+}
+
+enum SchoolTier {
+  REACH
+  TARGET
+  LIKELY
+}
+
+enum ApplicationStatus {
+  RESEARCHING
+  PLANNING
+  IN_PROGRESS
+  SUBMITTED
+  UNDER_REVIEW
+  INTERVIEW
+  DECIDED
+  WITHDRAWN
+  COMMITTED
+}
+
+enum DecisionOutcome {
+  ACCEPTED
+  DENIED
+  DEFERRED
+  WAITLISTED
+  MATCHED
+  WITHDRAWN
+  NO_DECISION
+}
+
+enum TestPolicy {
+  REQUIRED
+  OPTIONAL
+  BLIND
+  REQUIRED_FOR_SOME
+}
+
+enum InterviewPolicy {
+  NONE
+  OPTIONAL_INFORMATIONAL
+  OPTIONAL_EVALUATIVE
+  REQUIRED
+  BY_INVITATION
+}
+
+enum DeadlineKind {
+  APPLICATION
+  CSS_PROFILE
+  FAFSA_PRIORITY
+  INSTITUTIONAL_AID
+  SCHOLARSHIP
+  HONORS_PROGRAM
+  INTERVIEW_REQUEST
+  INTERVIEW_COMPLETE
+  DECISION_RELEASE
+  MID_YEAR_REPORT
+  ENROLLMENT_DEPOSIT
+  HOUSING
+  OTHER
+}
+
+enum RequirementType {
+  ESSAY
+  TEACHER_REC
+  COUNSELOR_REC
+  SCHOOL_REPORT
+  MID_YEAR_REPORT
+  FINAL_REPORT
+  TRANSCRIPT
+  TEST_SCORES
+  PORTFOLIO
+  AUDITION
+  INTERVIEW
+  FEE_OR_WAIVER
+  CSS_PROFILE
+  FAFSA
+  IDOC
+  NONCUSTODIAL_PROFILE
+  SUPPLEMENT_FORM
+  LOCI
+  OTHER
+}
+
+enum RequirementStatus {
+  NOT_STARTED
+  IN_PROGRESS
+  SUBMITTED
+  CONFIRMED_RECEIVED
+  WAIVED
+  NOT_APPLICABLE
+}
+
+enum Origin {
+  SEEDED
+  DERIVED
+  USER
+}
+
+enum Confidence {
+  HIGH
+  MEDIUM
+  LOW
+  UNVERIFIED
+}
+
+enum PromptKind {
+  PERSONAL_STATEMENT
+  WHY_US
+  WHY_MAJOR
+  COMMUNITY
+  DIVERSITY
+  ACTIVITY
+  INTELLECTUAL_INTEREST
+  CHALLENGE
+  SHORT_ANSWER
+  CREATIVE
+  ADDITIONAL_INFO
+  UC_PIQ
+  OTHER
+}
+
+enum EssayStatus {
+  NOT_STARTED
+  BRAINSTORM
+  OUTLINE
+  DRAFTING
+  REVISING
+  REVIEW
+  FINAL
+  SUBMITTED
+}
+
+enum AssignmentStatus {
+  PLANNED
+  ADAPTING
+  READY
+  SUBMITTED
+}
+
+enum RecommenderRole {
+  TEACHER
+  COUNSELOR
+  MENTOR
+  EMPLOYER
+  COACH
+  PEER
+  OTHER
+}
+
+enum RecommendationStatus {
+  NOT_ASKED
+  ASKED
+  AGREED
+  DECLINED
+  INVITED
+  IN_PROGRESS
+  SUBMITTED
+  CONFIRMED_RECEIVED
+}
+
+enum AidRequirementKind {
+  FAFSA
+  CSS_PROFILE
+  NONCUSTODIAL_PROFILE
+  IDOC_DOCUMENT
+  INSTITUTIONAL_FORM
+  VERIFICATION
+  TAX_RETURN
+  W2
+  BUSINESS_SUPPLEMENT
+  OTHER
+}
+
+enum IdocStatus {
+  NOT_REQUIRED
+  REQUIRED
+  IN_PROGRESS
+  SUBMITTED
+  COMPLETE
+}
+
+enum AppealStatus {
+  NONE
+  CONSIDERING
+  SUBMITTED
+  APPROVED
+  DENIED
+}
+
+enum ScholarshipScope {
+  LOCAL
+  REGIONAL
+  STATE
+  NATIONAL
+  INSTITUTIONAL
+}
+
+enum ScholarshipStatus {
+  SAVED
+  IN_PROGRESS
+  SUBMITTED
+  AWARDED
+  REJECTED
+  NOT_PURSUED
+}
+
+enum InterviewType {
+  ALUMNI
+  ON_CAMPUS
+  VIRTUAL
+  FACULTY
+  GROUP
+  THIRD_PARTY
+}
+
+enum InterviewStatus {
+  NOT_AVAILABLE
+  AVAILABLE
+  REQUESTED
+  SCHEDULED
+  COMPLETED
+  DECLINED
+  WAIVED
+}
+
+enum VisitType {
+  CAMPUS_TOUR
+  INFO_SESSION
+  OVERNIGHT
+  VIRTUAL_TOUR
+  COLLEGE_FAIR
+  CLASS_VISIT
+  ADMITTED_STUDENT_DAY
+}
+
+enum TaskStatus {
+  TODO
+  IN_PROGRESS
+  BLOCKED
+  DONE
+  CANCELLED
+}
+
+enum DocumentType {
+  TRANSCRIPT
+  RESUME
+  BRAG_SHEET
+  AWARD_LETTER
+  TAX_RETURN
+  W2
+  ESSAY_EXPORT
+  PORTFOLIO
+  TEST_REPORT
+  ACCEPTANCE_LETTER
+  OTHER
+}
+
+enum CalendarEventType {
+  DEADLINE
+  TASK
+  INTERVIEW
+  VISIT
+  DECISION_RELEASE
+  PERSONAL
+}
+
+enum EntityType {
+  APPLICATION
+  COLLEGE
+  ESSAY
+  TASK
+  SCHOLARSHIP
+  RECOMMENDATION
+  RECOMMENDER
+  DOCUMENT
+  NOTE
+  DEADLINE
+  REQUIREMENT
+  INTERVIEW
+  VISIT
+  AID_REQUIREMENT
+  AID_AWARD
+}
+
+enum ActivityAction {
+  CREATED
+  UPDATED
+  STATUS_CHANGED
+  COMPLETED
+  SUBMITTED
+  DECISION_RECORDED
+  VERSION_SAVED
+  COMMENTED
+  DELETED
+}
+
+enum NotificationType {
+  DEADLINE_APPROACHING
+  OVERDUE
+  REC_STALE
+  PORTAL_SWEEP
+  DECISION_EXPECTED
+  MILESTONE
+  DIGEST
+  RULE_VIOLATION
+}
+
+enum NotificationChannel {
+  IN_APP
+  EMAIL
+  PUSH
+}
+
+enum MilestoneKind {
+  FIRST_APPLICATION
+  FIRST_SUBMISSION
+  ALL_EARLY_SUBMITTED
+  ALL_ESSAYS_DONE
+  ALL_RECS_IN
+  FAFSA_FILED
+  FIRST_ACCEPTANCE
+  ALL_SUBMITTED
+  FULLY_FUNDED
+  COMMITTED
+}
+
+/// Compliance checks. See docs/02-DATA-MODEL.md §7.5.
+enum RuleCode {
+  MULTIPLE_BINDING_ED
+  REA_EXCLUSIVITY
+  QUESTBRIDGE_ED_CONFLICT
+  ED_ACCEPTED_MUST_WITHDRAW
+  FINAL_REPORT_ORDERING
+  MISSING_FERPA_WAIVER
+  DEADLINE_OVERLOAD
+  UNBALANCED_LIST
+}
+
+enum Severity {
+  BLOCKER
+  WARNING
+  INFO
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Identity & profile
+//
+// Authentication is deferred. A single fixed user is seeded; Auth.js adapter
+// tables (Account, Session, VerificationToken) get added when auth lands, since
+// their shape is dictated by the adapter.
+// ─────────────────────────────────────────────────────────────────────────────
+
+model User {
+  id            String    @id @default(cuid())
+  email         String    @unique
+  name          String?
+  image         String?
+  emailVerified DateTime?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  profile         StudentProfile?
+  settings        UserSettings?
+  aidProfile      FinancialAidProfile?
+  testScores      TestScore[]
+  applications    Application[]
+  essays          Essay[]
+  tasks           Task[]
+  scholarships    Scholarship[]
+  recommenders    Recommender[]
+  documents       Document[]
+  notes           Note[]
+  deadlines       Deadline[]
+  aidRequirements AidRequirement[]
+  visits          Visit[]
+  calendarEvents  CalendarEvent[]
+  activityEvents  ActivityEvent[]
+  notifications   Notification[]
+  milestones      Milestone[]
+  ruleFindings    RuleFinding[]
+}
+
+model StudentProfile {
+  id                  String             @id @default(cuid())
+  userId              String             @unique
+  graduationYear      Int
+  highSchoolName      String?
+  ceebCode            String?
+  gpaUnweighted       Decimal?           @db.Decimal(4, 3)
+  gpaWeighted         Decimal?           @db.Decimal(4, 3)
+  classRank           Int?
+  classSize           Int?
+  intendedMajors      String[]
+  residencyState      String?
+  citizenship         CitizenshipStatus?
+  isFirstGeneration   Boolean            @default(false)
+  needsFinancialAid   Boolean            @default(true)
+  feeWaiverEligible   Boolean            @default(false)
+  /// Triggers the noncustodial CSS Profile requirement. See research P-08.
+  parentsSeparated    Boolean            @default(false)
+  questBridgeStatus   QuestBridgeStatus  @default(NOT_APPLICABLE)
+  /// Gates the entire recommendation pipeline — recommenders cannot be invited
+  /// on Common App until this is signed.
+  ferpaWaiverSignedAt DateTime?
+  createdAt           DateTime           @default(now())
+  updatedAt           DateTime           @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model UserSettings {
+  id                  String          @id @default(cuid())
+  userId              String          @unique
+  theme               Theme           @default(SYSTEM)
+  timezone            String          @default("America/New_York")
+  weekStartsOn        Int             @default(0)
+  digestFrequency     DigestFrequency @default(DAILY)
+  digestHourLocal     Int             @default(8)
+  reminderOffsetsDays Int[]           @default([30, 14, 7, 3, 1, 0])
+  /// Back-scheduling lead times, in days, used by the scheduling service.
+  recLeadTimeDays     Int             @default(28)
+  essayLeadTimeDays   Int             @default(21)
+  emailNotifications  Boolean         @default(true)
+  pushNotifications   Boolean         @default(false)
+  reduceMotion        Boolean         @default(false)
+  confettiEnabled     Boolean         @default(true)
+  createdAt           DateTime        @default(now())
+  updatedAt           DateTime        @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model TestScore {
+  id                   String         @id @default(cuid())
+  userId               String
+  type                 TestType
+  label                String?
+  score                Int
+  subscores            Json?
+  takenOn              DateTime
+  isSuperscoreEligible Boolean        @default(true)
+  sendStatus           TestSendStatus @default(NOT_SENT)
+  createdAt            DateTime       @default(now())
+  updatedAt            DateTime       @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, type])
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Reference data — global, seeded, cycle-versioned
+// ─────────────────────────────────────────────────────────────────────────────
+
+model College {
+  id                    String                @id @default(cuid())
+  slug                  String                @unique
+  name                  String
+  /// Search aliases: "Cal", "UMich", "Tech".
+  aliases               String[]
+  city                  String?
+  state                 String?
+  country               String                @default("US")
+  ipedsId               String?               @unique
+  type                  CollegeType?
+  platforms             ApplicationPlatform[]
+  isQuestBridgePartner  Boolean               @default(false)
+  requiresCssProfile    Boolean               @default(false)
+  isNeedBlind           Boolean               @default(false)
+  meetsFullNeed         Boolean               @default(false)
+  admitRate             Decimal?              @db.Decimal(5, 4)
+  sat25                 Int?
+  sat75                 Int?
+  act25                 Int?
+  act75                 Int?
+  undergradEnrollment   Int?
+  costOfAttendanceCents Int?
+  testPolicy            TestPolicy?
+  interviewPolicy       InterviewPolicy?
+  requiredTeacherRecs   Int                   @default(0)
+  requiresCounselorRec  Boolean               @default(false)
+  maxTeacherRecs        Int?
+  website               String?
+  admissionsUrl         String?
+  netPriceCalculatorUrl String?
+  portalUrlHint         String?
+  /// Provenance for seeded reference data.
+  dataSource            String?
+  dataVerifiedAt        DateTime?
+  createdAt             DateTime              @default(now())
+  updatedAt             DateTime              @updatedAt
+
+  applications         Application[]
+  deadlineTemplates    CollegeDeadlineTemplate[]
+  requirementTemplates CollegeRequirementTemplate[]
+  promptTemplates      EssayPromptTemplate[]
+  visits               Visit[]
+  notes                Note[]
+
+  @@index([name])
+  @@index([state])
+}
+
+model CollegeDeadlineTemplate {
+  id         String           @id @default(cuid())
+  collegeId  String
+  /// Entering-class year. 2027 = students entering fall 2027.
+  cycleYear  Int
+  round      ApplicationRound
+  kind       DeadlineKind
+  date       DateTime
+  timezone   String           @default("America/New_York")
+  confidence Confidence       @default(UNVERIFIED)
+  sourceUrl  String?
+  createdAt  DateTime         @default(now())
+  updatedAt  DateTime         @updatedAt
+
+  college College @relation(fields: [collegeId], references: [id], onDelete: Cascade)
+
+  @@unique([collegeId, cycleYear, round, kind])
+  @@index([collegeId, cycleYear])
+}
+
+model CollegeRequirementTemplate {
+  id         String           @id @default(cuid())
+  collegeId  String
+  cycleYear  Int
+  round      ApplicationRound
+  type       RequirementType
+  label      String
+  isRequired Boolean          @default(true)
+  detail     String?
+  confidence Confidence       @default(UNVERIFIED)
+  sourceUrl  String?
+  createdAt  DateTime         @default(now())
+  updatedAt  DateTime         @updatedAt
+
+  college College @relation(fields: [collegeId], references: [id], onDelete: Cascade)
+
+  @@index([collegeId, cycleYear])
+}
+
+model EssayPromptTemplate {
+  id         String              @id @default(cuid())
+  collegeId  String
+  cycleYear  Int
+  round      ApplicationRound?
+  platform   ApplicationPlatform
+  prompt     String
+  wordMin    Int?
+  wordMax    Int?
+  isRequired Boolean             @default(true)
+  promptKind PromptKind          @default(OTHER)
+  /// Drives the essay reuse engine alongside promptKind and word-limit fit.
+  topicTags  String[]
+  confidence Confidence          @default(UNVERIFIED)
+  sourceUrl  String?
+  createdAt  DateTime            @default(now())
+  updatedAt  DateTime            @updatedAt
+
+  college College @relation(fields: [collegeId], references: [id], onDelete: Cascade)
+
+  @@index([collegeId, cycleYear])
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Applications — the spine
+// ─────────────────────────────────────────────────────────────────────────────
+
+model Application {
+  id                  String              @id @default(cuid())
+  userId              String
+  collegeId           String
+  cycleYear           Int
+  round               ApplicationRound
+  platform            ApplicationPlatform
+  tier                SchoolTier?
+  status              ApplicationStatus   @default(RESEARCHING)
+  priority            Int                 @default(2)
+  intendedMajor       String?
+  isHonorsProgram     Boolean             @default(false)
+  submittedAt         DateTime?
+  applicationFeeCents Int?
+  feeWaiverApplied    Boolean             @default(false)
+
+  decision                DecisionOutcome?
+  decidedAt               DateTime?
+  isBindingCommitment     Boolean          @default(false)
+  enrollmentDepositPaidAt DateTime?
+
+  archivedAt DateTime?
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+
+  user            User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  college         College          @relation(fields: [collegeId], references: [id], onDelete: Restrict)
+  portalAccount   PortalAccount?
+  interview       Interview?
+  aidAward        AidAward?
+  requirements    Requirement[]
+  deadlines       Deadline[]
+  essayPrompts    EssayPrompt[]
+  recommendations Recommendation[]
+  aidRequirements AidRequirement[]
+  tasks           Task[]
+  notes           Note[]
+  documents       Document[]
+  calendarEvents  CalendarEvent[]
+  assignments     EssayAssignment[]
+
+  @@unique([userId, collegeId, cycleYear])
+  @@index([userId, status])
+  @@index([userId, round])
+}
+
+/// Portal credentials are deliberately NOT stored. Username only, never a password.
+/// See docs/01-PRD.md §3 non-goals and risk R8.
+model PortalAccount {
+  id            String    @id @default(cuid())
+  applicationId String    @unique
+  url           String
+  username      String?
+  applicantId   String?
+  lastCheckedAt DateTime?
+  notes         String?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  application Application @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+}
+
+model Requirement {
+  id            String            @id @default(cuid())
+  applicationId String
+  type          RequirementType
+  label         String
+  isRequired    Boolean           @default(true)
+  status        RequirementStatus @default(NOT_STARTED)
+  dueAt         DateTime?
+  submittedAt   DateTime?
+  /// The portal-sweep field. Submission is not receipt — see research P-03.
+  /// Application progress caps at 90% until this is set.
+  confirmedReceivedAt DateTime?
+
+  origin           Origin  @default(DERIVED)
+  sourceTemplateId String?
+  isUserOverridden Boolean @default(false)
+
+  essayPromptId    String? @unique
+  recommendationId String? @unique
+  documentId       String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  application    Application     @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+  essayPrompt    EssayPrompt?    @relation(fields: [essayPromptId], references: [id], onDelete: SetNull)
+  recommendation Recommendation? @relation(fields: [recommendationId], references: [id], onDelete: SetNull)
+  document       Document?       @relation(fields: [documentId], references: [id], onDelete: SetNull)
+
+  @@index([applicationId, status])
+}
+
+model Deadline {
+  id            String       @id @default(cuid())
+  userId        String
+  applicationId String?
+  scholarshipId String?
+  kind          DeadlineKind
+  title         String
+  dueAt         DateTime
+  /// Deadlines are usually 11:59pm local to the COLLEGE, not to the student.
+  timezone      String       @default("America/New_York")
+  /// Hard = external and immovable. Soft = our back-scheduled internal target.
+  isHard        Boolean      @default(true)
+  origin        Origin       @default(DERIVED)
+  confidence    Confidence   @default(UNVERIFIED)
+  verifiedAt    DateTime?
+  sourceUrl     String?
+  completedAt   DateTime?
+  createdAt     DateTime     @default(now())
+  updatedAt     DateTime     @updatedAt
+
+  user           User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  application    Application?    @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+  scholarship    Scholarship?    @relation(fields: [scholarshipId], references: [id], onDelete: Cascade)
+  calendarEvents CalendarEvent[]
+
+  @@index([userId, dueAt])
+  @@index([applicationId])
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Essays — the reuse graph
+// ─────────────────────────────────────────────────────────────────────────────
+
+model Essay {
+  id            String      @id @default(cuid())
+  userId        String
+  title         String
+  promptText    String?
+  wordLimit     Int?
+  charLimit     Int?
+  status        EssayStatus @default(NOT_STARTED)
+  promptKind    PromptKind  @default(OTHER)
+  topicTags     String[]
+  /// e.g. the Common App personal statement — the hub of the reuse graph.
+  isMaster      Boolean     @default(false)
+  /// Lineage when this essay was adapted from another.
+  parentEssayId String?
+  archivedAt    DateTime?
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
+
+  user        User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  parentEssay Essay?            @relation("EssayLineage", fields: [parentEssayId], references: [id], onDelete: SetNull)
+  adaptations Essay[]           @relation("EssayLineage")
+  versions    EssayVersion[]
+  assignments EssayAssignment[]
+  tasks       Task[]
+
+  @@index([userId, status])
+}
+
+model EssayVersion {
+  id                 String   @id @default(cuid())
+  essayId            String
+  versionNumber      Int
+  label              String?
+  content            String
+  wordCount          Int
+  charCount          Int
+  readingTimeSeconds Int
+  isAutosave         Boolean  @default(true)
+  createdAt          DateTime @default(now())
+
+  essay              Essay             @relation(fields: [essayId], references: [id], onDelete: Cascade)
+  comments           EssayComment[]
+  submittedForAssignments EssayAssignment[] @relation("SubmittedVersion")
+
+  @@unique([essayId, versionNumber])
+  @@index([essayId, createdAt])
+}
+
+/// Prompts belonging to a specific application, copied from EssayPromptTemplate.
+model EssayPrompt {
+  id               String     @id @default(cuid())
+  applicationId    String
+  sourceTemplateId String?
+  prompt           String
+  wordMin          Int?
+  wordMax          Int?
+  isRequired       Boolean    @default(true)
+  promptKind       PromptKind @default(OTHER)
+  topicTags        String[]
+  createdAt        DateTime   @default(now())
+  updatedAt        DateTime   @updatedAt
+
+  application Application       @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+  requirement Requirement?
+  assignments EssayAssignment[]
+
+  @@index([applicationId])
+}
+
+/// Many-to-many between essays and the things they answer. One essay can serve
+/// several prompts; each pairing tracks its own adaptation state and records
+/// exactly which version was submitted where.
+model EssayAssignment {
+  id                 String           @id @default(cuid())
+  essayId            String
+  applicationId      String?
+  essayPromptId      String?
+  scholarshipId      String?
+  status             AssignmentStatus @default(PLANNED)
+  submittedVersionId String?
+  submittedAt        DateTime?
+  /// e.g. {"overWordLimit": 42, "foreignCollegeMentions": ["Michigan"]}
+  fitWarnings        Json?
+  createdAt          DateTime         @default(now())
+  updatedAt          DateTime         @updatedAt
+
+  essay            Essay         @relation(fields: [essayId], references: [id], onDelete: Cascade)
+  application      Application?  @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+  essayPrompt      EssayPrompt?  @relation(fields: [essayPromptId], references: [id], onDelete: Cascade)
+  scholarship      Scholarship?  @relation(fields: [scholarshipId], references: [id], onDelete: Cascade)
+  submittedVersion EssayVersion? @relation("SubmittedVersion", fields: [submittedVersionId], references: [id], onDelete: SetNull)
+
+  @@unique([essayId, essayPromptId])
+  @@unique([essayId, scholarshipId])
+  @@index([essayId])
+}
+
+model EssayComment {
+  id             String    @id @default(cuid())
+  essayVersionId String
+  /// Null when authored by an external reviewer via a share link.
+  authorUserId   String?
+  authorName     String?
+  quotedText     String?
+  rangeStart     Int?
+  rangeEnd       Int?
+  body           String
+  resolvedAt     DateTime?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  essayVersion EssayVersion @relation(fields: [essayVersionId], references: [id], onDelete: Cascade)
+
+  @@index([essayVersionId])
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Recommendations
+// ─────────────────────────────────────────────────────────────────────────────
+
+model Recommender {
+  id                  String          @id @default(cuid())
+  userId              String
+  name                String
+  email               String?
+  role                RecommenderRole
+  subject             String?
+  relationship        String?
+  phone               String?
+  notes               String?
+  bragSheetDocumentId String?
+  maxLettersWilling   Int?
+  createdAt           DateTime        @default(now())
+  updatedAt           DateTime        @updatedAt
+
+  user            User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  recommendations Recommendation[]
+
+  @@index([userId])
+}
+
+model Recommendation {
+  id                  String               @id @default(cuid())
+  recommenderId       String
+  applicationId       String
+  status              RecommendationStatus @default(NOT_ASKED)
+  askedAt             DateTime?
+  agreedAt            DateTime?
+  invitedAt           DateTime?
+  submittedAt         DateTime?
+  confirmedReceivedAt DateTime?
+  thankedAt           DateTime?
+  dueAt               DateTime?
+  notes               String?
+  createdAt           DateTime             @default(now())
+  updatedAt           DateTime             @updatedAt
+
+  recommender Recommender  @relation(fields: [recommenderId], references: [id], onDelete: Cascade)
+  application Application  @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+  requirement Requirement?
+  tasks       Task[]
+
+  @@unique([recommenderId, applicationId])
+  @@index([applicationId, status])
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Financial aid
+// ─────────────────────────────────────────────────────────────────────────────
+
+model FinancialAidProfile {
+  id                      String     @id @default(cuid())
+  userId                  String     @unique
+  fafsaSubmittedAt        DateTime?
+  fafsaConfirmation       String?
+  studentAidIndex         Int?
+  fsaIdCreatedAt          DateTime?
+  cssProfileSubmittedAt   DateTime?
+  cssFeeWaiverGranted     Boolean    @default(false)
+  /// Set when StudentProfile.parentsSeparated — most CSS schools require a
+  /// second Profile filed from the noncustodial parent's own account.
+  noncustodialRequired    Boolean    @default(false)
+  noncustodialSubmittedAt DateTime?
+  idocStatus              IdocStatus @default(NOT_REQUIRED)
+  verificationSelected    Boolean    @default(false)
+  createdAt               DateTime   @default(now())
+  updatedAt               DateTime   @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model AidRequirement {
+  id            String             @id @default(cuid())
+  userId        String
+  applicationId String?
+  kind          AidRequirementKind
+  label         String
+  dueAt         DateTime?
+  status        RequirementStatus  @default(NOT_STARTED)
+  documentId    String?
+  notes         String?
+  createdAt     DateTime           @default(now())
+  updatedAt     DateTime           @updatedAt
+
+  user        User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  application Application? @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+  document    Document?    @relation(fields: [documentId], references: [id], onDelete: SetNull)
+  tasks       Task[]
+
+  @@index([userId, status])
+}
+
+/// All amounts in integer cents.
+///
+/// Net price = costOfAttendance − (all grants + all scholarships).
+/// Loans and work-study are NEVER subtracted — they are debt and wages, not
+/// discounts. See research P-09.
+model AidAward {
+  id                      String       @id @default(cuid())
+  applicationId           String       @unique
+  costOfAttendanceCents   Int
+  tuitionFeesCents        Int?
+  roomBoardCents          Int?
+  booksOtherCents         Int?
+  institutionalGrantCents Int          @default(0)
+  federalGrantCents       Int          @default(0)
+  stateGrantCents         Int          @default(0)
+  meritScholarshipCents   Int          @default(0)
+  outsideScholarshipCents Int          @default(0)
+  workStudyCents          Int          @default(0)
+  subsidizedLoanCents     Int          @default(0)
+  unsubsidizedLoanCents   Int          @default(0)
+  parentPlusLoanCents     Int          @default(0)
+  awardLetterDocumentId   String?
+  appealStatus            AppealStatus @default(NONE)
+  receivedAt              DateTime?
+  notes                   String?
+  createdAt               DateTime     @default(now())
+  updatedAt               DateTime     @updatedAt
+
+  application Application @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Scholarships
+// ─────────────────────────────────────────────────────────────────────────────
+
+model Scholarship {
+  id                    String            @id @default(cuid())
+  userId                String
+  name                  String
+  provider              String?
+  url                   String?
+  amountCents           Int?
+  isRenewable           Boolean           @default(false)
+  scope                 ScholarshipScope  @default(NATIONAL)
+  /// Feeds expected-value ranking: amount ÷ effort × scope multiplier.
+  /// Local awards have far better odds — see research P-10.
+  effortEstimateMinutes Int?
+  deadlineAt            DateTime?
+  status                ScholarshipStatus @default(SAVED)
+  awardedAmountCents    Int?
+  requirementsNote      String?
+  archivedAt            DateTime?
+  createdAt             DateTime          @default(now())
+  updatedAt             DateTime          @updatedAt
+
+  user        User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  deadlines   Deadline[]
+  assignments EssayAssignment[]
+  tasks       Task[]
+  documents   Document[]
+
+  @@index([userId, status])
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Interviews & visits
+// ─────────────────────────────────────────────────────────────────────────────
+
+model Interview {
+  id              String          @id @default(cuid())
+  applicationId   String          @unique
+  type            InterviewType
+  isEvaluative    Boolean         @default(true)
+  status          InterviewStatus @default(NOT_AVAILABLE)
+  /// Last day to REQUEST and last day to COMPLETE are different dates at many
+  /// colleges, and both are easy to miss.
+  requestByAt     DateTime?
+  completeByAt    DateTime?
+  scheduledAt     DateTime?
+  interviewerName String?
+  interviewerEmail String?
+  location        String?
+  prepNotes       String?
+  reflectionNotes String?
+  thankYouSentAt  DateTime?
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
+
+  application Application @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+}
+
+model Visit {
+  id                           String    @id @default(cuid())
+  userId                       String
+  collegeId                    String
+  type                         VisitType
+  occurredAt                   DateTime
+  rating                       Int?
+  notes                        String?
+  /// Doubles as the demonstrated-interest log.
+  countsAsDemonstratedInterest Boolean   @default(true)
+  createdAt                    DateTime  @default(now())
+  updatedAt                    DateTime  @updatedAt
+
+  user           User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  college        College         @relation(fields: [collegeId], references: [id], onDelete: Cascade)
+  calendarEvents CalendarEvent[]
+
+  @@index([userId, occurredAt])
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Tasks
+// ─────────────────────────────────────────────────────────────────────────────
+
+model Task {
+  id              String     @id @default(cuid())
+  userId          String
+  title           String
+  description     String?
+  status          TaskStatus @default(TODO)
+  /// 0 = urgent … 3 = low
+  priority        Int        @default(2)
+  labels          String[]
+  dueAt           DateTime?
+  startAt         DateTime?
+  completedAt     DateTime?
+  estimateMinutes Int?
+  /// Fractional indexing so drag-and-drop reorders touch one row.
+  sortOrder       Float      @default(0)
+
+  parentTaskId     String?
+  applicationId    String?
+  essayId          String?
+  scholarshipId    String?
+  recommendationId String?
+  aidRequirementId String?
+
+  /// RFC 5545 RRULE, e.g. the weekly portal sweep.
+  recurrenceRule     String?
+  recurrenceParentId String?
+
+  isAutoGenerated Boolean @default(false)
+  /// Idempotency key for generated tasks, e.g. "rec-ask:{recommendationId}".
+  /// Unique per user so regeneration never duplicates.
+  generatorKey    String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user           User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  parentTask     Task?           @relation("Subtasks", fields: [parentTaskId], references: [id], onDelete: Cascade)
+  subtasks       Task[]          @relation("Subtasks")
+  application    Application?    @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+  essay          Essay?          @relation(fields: [essayId], references: [id], onDelete: Cascade)
+  scholarship    Scholarship?    @relation(fields: [scholarshipId], references: [id], onDelete: Cascade)
+  recommendation Recommendation? @relation(fields: [recommendationId], references: [id], onDelete: Cascade)
+  aidRequirement AidRequirement? @relation(fields: [aidRequirementId], references: [id], onDelete: Cascade)
+
+  blockedBy      TaskDependency[] @relation("BlockedTask")
+  blocking       TaskDependency[] @relation("BlockingTask")
+  calendarEvents CalendarEvent[]
+
+  @@unique([userId, generatorKey])
+  @@index([userId, status, dueAt])
+  @@index([applicationId])
+}
+
+model TaskDependency {
+  id             String   @id @default(cuid())
+  blockingTaskId String
+  blockedTaskId  String
+  createdAt      DateTime @default(now())
+
+  blockingTask Task @relation("BlockingTask", fields: [blockingTaskId], references: [id], onDelete: Cascade)
+  blockedTask  Task @relation("BlockedTask", fields: [blockedTaskId], references: [id], onDelete: Cascade)
+
+  @@unique([blockingTaskId, blockedTaskId])
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Documents, notes, calendar, events
+// ─────────────────────────────────────────────────────────────────────────────
+
+model Document {
+  id             String       @id @default(cuid())
+  userId         String
+  name           String
+  type           DocumentType
+  storageKey     String       @unique
+  url            String
+  mimeType       String
+  sizeBytes      Int
+  applicationId  String?
+  scholarshipId  String?
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  user            User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  application     Application?     @relation(fields: [applicationId], references: [id], onDelete: SetNull)
+  scholarship     Scholarship?     @relation(fields: [scholarshipId], references: [id], onDelete: SetNull)
+  requirements    Requirement[]
+  aidRequirements AidRequirement[]
+
+  @@index([userId, type])
+}
+
+model Note {
+  id            String    @id @default(cuid())
+  userId        String
+  title         String?
+  /// Rich-text document.
+  content       Json
+  /// Denormalized for full-text search.
+  plainText     String
+  isPinned      Boolean   @default(false)
+  applicationId String?
+  collegeId     String?
+  archivedAt    DateTime?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  user        User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  application Application? @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+  college     College?     @relation(fields: [collegeId], references: [id], onDelete: Cascade)
+
+  @@index([userId, updatedAt])
+}
+
+model CalendarEvent {
+  id            String            @id @default(cuid())
+  userId        String
+  title         String
+  description   String?
+  location      String?
+  startAt       DateTime
+  endAt         DateTime
+  isAllDay      Boolean           @default(false)
+  type          CalendarEventType
+  deadlineId    String?
+  taskId        String?
+  interviewId   String?
+  visitId       String?
+  applicationId String?
+  /// Stable UID for the read-only iCal feed.
+  externalUid   String?           @unique
+  createdAt     DateTime          @default(now())
+  updatedAt     DateTime          @updatedAt
+
+  user        User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  deadline    Deadline?    @relation(fields: [deadlineId], references: [id], onDelete: Cascade)
+  task        Task?        @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  visit       Visit?       @relation(fields: [visitId], references: [id], onDelete: Cascade)
+  application Application? @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+
+  @@index([userId, startAt])
+}
+
+/// Powers both the per-entity activity feed and the season-scale /timeline view.
+model ActivityEvent {
+  id          String         @id @default(cuid())
+  userId      String
+  entityType  EntityType
+  entityId    String
+  action      ActivityAction
+  summary     String
+  metadata    Json?
+  isMilestone Boolean        @default(false)
+  occurredAt  DateTime       @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, occurredAt])
+  @@index([entityType, entityId])
+}
+
+model Notification {
+  id            String                @id @default(cuid())
+  userId        String
+  type          NotificationType
+  title         String
+  body          String?
+  entityType    EntityType?
+  entityId      String?
+  scheduledFor  DateTime?
+  sentAt        DateTime?
+  readAt        DateTime?
+  dismissedAt   DateTime?
+  channels      NotificationChannel[]
+  createdAt     DateTime              @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, readAt])
+  @@index([scheduledFor])
+}
+
+/// Confetti triggers. Milestones are earned, not sprinkled — one row each.
+model Milestone {
+  id           String        @id @default(cuid())
+  userId       String
+  kind         MilestoneKind
+  achievedAt   DateTime      @default(now())
+  celebratedAt DateTime?
+  metadata     Json?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, kind])
+}
+
+/// Cached rule-engine output. Findings are advisory and always cite a source —
+/// they never block the user. See docs/02-DATA-MODEL.md §7.5.
+model RuleFinding {
+  id          String    @id @default(cuid())
+  userId      String
+  code        RuleCode
+  severity    Severity
+  /// Stable key identifying the specific violation instance, so re-evaluation
+  /// updates in place rather than duplicating.
+  entityKey   String
+  message     String
+  explanation String?
+  citationUrl String?
+  entityIds   String[]
+  dismissedAt DateTime?
+  resolvedAt  DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, code, entityKey])
+  @@index([userId, resolvedAt])
+}
