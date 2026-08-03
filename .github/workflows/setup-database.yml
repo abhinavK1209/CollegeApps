@@ -1,0 +1,96 @@
+name: Set up database
+
+# Run this from the Actions tab — no terminal needed.
+#
+# It applies migrations, loads the college catalog, and (if the Scorecard key is
+# set) fills in real admit rates, test-score ranges, cost, and enrollment from
+# the U.S. Department of Education.
+#
+# Safe to re-run: migrations are versioned, colleges upsert on slug and only
+# write identity fields, and the Scorecard import updates statistics in place.
+# None of it touches your applications, essays, tasks, or profile.
+
+on:
+  workflow_dispatch:
+    inputs:
+      import_scorecard:
+        description: "Fetch admit rates and score ranges from College Scorecard"
+        type: boolean
+        default: true
+      import_all_institutions:
+        description: "Also add every US degree-granting institution (~6,000) for search"
+        type: boolean
+        default: false
+
+jobs:
+  setup:
+    runs-on: ubuntu-latest
+
+    env:
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+      DATABASE_URL_UNPOOLED: ${{ secrets.DATABASE_URL_UNPOOLED }}
+      COLLEGE_SCORECARD_API_KEY: ${{ secrets.COLLEGE_SCORECARD_API_KEY }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Check the database secrets are set
+        run: |
+          if [ -z "$DATABASE_URL" ]; then
+            echo "::error::DATABASE_URL is not set. Add it under Settings → Secrets and variables → Actions."
+            exit 1
+          fi
+          if [ -z "$DATABASE_URL_UNPOOLED" ]; then
+            echo "::error::DATABASE_URL_UNPOOLED is not set. Add it under Settings → Secrets and variables → Actions."
+            exit 1
+          fi
+          echo "Both connection strings present."
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: Apply migrations
+        run: pnpm exec prisma migrate deploy
+
+      - name: Load the college catalog
+        run: pnpm db:seed
+
+      - name: Import College Scorecard statistics
+        if: ${{ inputs.import_scorecard }}
+        run: |
+          if [ -z "$COLLEGE_SCORECARD_API_KEY" ]; then
+            echo "::warning::COLLEGE_SCORECARD_API_KEY is not set — skipping."
+            echo "Colleges will show em-dashes for admit rate and scores."
+            echo "Get a free key at https://api.data.gov/signup/ and add it as a secret."
+            exit 0
+          fi
+          if [ "${{ inputs.import_all_institutions }}" = "true" ]; then
+            pnpm db:import:scorecard --all
+          else
+            pnpm db:import:scorecard
+          fi
+
+      - name: Summary
+        if: always()
+        run: |
+          {
+            echo "### Database setup"
+            echo ""
+            echo "- Migrations applied"
+            echo "- College catalog loaded"
+            if [ -n "$COLLEGE_SCORECARD_API_KEY" ] && [ "${{ inputs.import_scorecard }}" = "true" ]; then
+              echo "- Scorecard statistics imported"
+            else
+              echo "- Scorecard import skipped"
+            fi
+            echo ""
+            echo "Open your site and visit **/colleges** to check."
+          } >> "$GITHUB_STEP_SUMMARY"

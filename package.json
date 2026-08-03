@@ -5,7 +5,7 @@
   "description": "An admissions operating system",
   "scripts": {
     "dev": "next dev --turbopack",
-    "build": "prisma generate && prisma migrate deploy && next build",
+    "build": "prisma generate && prisma migrate deploy && prisma db seed && next build",
     "postinstall": "prisma generate",
     "start": "next start",
     "lint": "eslint .",

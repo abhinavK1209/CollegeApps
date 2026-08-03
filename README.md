@@ -45,38 +45,51 @@ date-fns · Vercel
 Authentication is deliberately deferred — the app runs single-user for now. Every model
 and service is still scoped by `userId`, so auth drops in later with no migration.
 
-## Running locally
+## Setup — entirely from github.com, no terminal
+
+Everything below happens in the browser.
+
+### 1. Add three secrets
+
+**Settings → Secrets and variables → Actions → New repository secret.**
+
+| Secret name | Where to get the value |
+|---|---|
+| `DATABASE_URL` | [console.neon.tech](https://console.neon.tech) → your project → Connection string, **"Pooled connection" ON** (host contains `-pooler`) |
+| `DATABASE_URL_UNPOOLED` | Same screen, **"Pooled connection" OFF** (no `-pooler`) |
+| `COLLEGE_SCORECARD_API_KEY` | Free at [api.data.gov/signup](https://api.data.gov/signup/) |
+
+Both connection strings are needed because Prisma runs queries through Neon's
+pooler, but migrations cannot — they need a direct connection.
+
+### 2. Run the setup workflow
+
+**Actions → "Set up database" → Run workflow.**
+
+It applies migrations, loads the 140-college catalog, and pulls real admit
+rates, test-score ranges, cost, and enrollment from the U.S. Department of
+Education. Takes a couple of minutes and prints a summary when it finishes.
+
+Tick **"Also add every US degree-granting institution"** if you want the full
+~6,000-school directory for search rather than the curated set.
+
+Safe to re-run at any time. It never touches your applications, essays, tasks,
+or profile.
+
+### 3. Open your site
+
+Vercel redeploys on every push to `main`, and the build applies migrations and
+loads the catalog automatically — so the workflow above is only needed to pull
+in the Scorecard statistics.
+
+## Running locally (optional)
 
 ```bash
 pnpm install
-cp .env.example .env.local
-pnpm db:up        # local Postgres in Docker (only needed once the schema lands)
-pnpm dev          # → http://localhost:3000
+cp .env.example .env      # then fill in the same three values
+pnpm db:up                # local Postgres in Docker, if you'd rather not use Neon
+pnpm dev                  # → http://localhost:3000
 ```
-
-## Deploying to Vercel
-
-**1. Create the database.** At [neon.tech](https://neon.tech), create a project. Copy both
-connection strings from the dashboard:
-
-| Vercel env var | Which Neon string |
-|---|---|
-| `DATABASE_URL` | the **pooled** one (host contains `-pooler`) |
-| `DIRECT_URL` | the **direct** one (no `-pooler`) |
-
-Prisma runs queries through the pooler but migrations must bypass it, which is why both
-are needed.
-
-**2. Import the repo.** At [vercel.com/new](https://vercel.com/new), import
-`abhinavK1209/CollegeApps`. Framework preset is detected automatically; no build settings
-need changing.
-
-**3. Add the two environment variables** under Settings → Environment Variables, for all
-environments.
-
-**4. Deploy.** Every push to `main` ships to production; every PR gets a preview URL.
-
-Vercel's Hobby tier and Neon's free tier both cover a single-user personal project.
 
 ## Documents
 
