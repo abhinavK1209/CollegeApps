@@ -32,7 +32,7 @@ const SECTIONS: { title: string; items: NavItem[] }[] = [
     title: "Plan",
     items: [
       { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
-      { href: "/calendar", label: "Calendar", icon: CalendarDays, soon: true },
+      { href: "/calendar", label: "Calendar", icon: CalendarDays },
       { href: "/tasks", label: "Tasks", icon: CheckSquare },
     ],
   },
@@ -56,7 +56,7 @@ const SECTIONS: { title: string; items: NavItem[] }[] = [
     title: "Library",
     items: [
       { href: "/documents", label: "Documents", icon: FileText, soon: true },
-      { href: "/analytics", label: "Analytics", icon: BarChart3, soon: true },
+      { href: "/analytics", label: "Analytics", icon: BarChart3 },
     ],
   },
 ];
