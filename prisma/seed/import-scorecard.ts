@@ -20,6 +20,8 @@ import { writeFile } from "node:fs/promises";
 import path from "node:path";
 import { PrismaClient, type CollegeType } from "@prisma/client";
 
+import { matchKeys, normalize } from "./match";
+
 const db = new PrismaClient();
 
 const API_BASE = "https://api.data.gov/ed/collegescorecard/v1/schools";
@@ -85,15 +87,6 @@ function satTotal(reading: number | null, math: number | null): number | null {
 }
 
 /** Normalizes for fuzzy matching: lowercase, strip punctuation and filler words. */
-function normalize(name: string): string {
-  return name
-    .toLowerCase()
-    .replace(/&/g, "and")
-    .replace(/[^a-z0-9 ]/g, " ")
-    .replace(/\b(the|of|at|university|college|institute|technology)\b/g, " ")
-    .replace(/\s+/g, " ")
-    .trim();
-}
 
 async function fetchPage(
   apiKey: string,
@@ -188,21 +181,40 @@ async function main() {
   }
 
   const existing = await db.college.findMany({
-    select: { id: true, slug: true, name: true, aliases: true },
+    select: { id: true, slug: true, name: true, aliases: true, ipedsId: true },
   });
+
+  // ipedsId is unique, so a Scorecard row can only ever enrich one college.
+  // Two curated colleges can still resolve to the same row — usually when one
+  // college's alias is another's official name — so the first match claims the
+  // row and later ones are reported instead of crashing on the constraint.
+  // Seeded from the database so re-runs re-match each college to its own row.
+  const claimedBy = new Map<string, string>();
+  for (const college of existing) {
+    if (college.ipedsId) claimedBy.set(college.ipedsId, college.id);
+  }
 
   let enriched = 0;
   const unmatched: string[] = [];
+  const conflicts: string[] = [];
 
   for (const college of existing) {
-    const row =
-      byName.get(normalize(college.name)) ??
-      college.aliases.map((a) => byName.get(normalize(a))).find(Boolean);
+    const row = matchKeys(college.name, college.aliases)
+      .map((key) => byName.get(key))
+      .find(Boolean);
 
     if (!row) {
       unmatched.push(college.name);
       continue;
     }
+
+    const ipedsId = String(row.id);
+    const claimant = claimedBy.get(ipedsId);
+    if (claimant !== undefined && claimant !== college.id) {
+      conflicts.push(`${college.name} → ${row["school.name"]} (${ipedsId})`);
+      continue;
+    }
+    claimedBy.set(ipedsId, college.id);
 
     await db.college.update({
       where: { id: college.id },
@@ -214,6 +226,11 @@ async function main() {
   console.warn(`Enriched ${enriched} of ${existing.length} curated colleges.`);
   if (unmatched.length > 0) {
     console.warn(`Unmatched (${unmatched.length}): ${unmatched.join(", ")}`);
+  }
+  if (conflicts.length > 0) {
+    console.warn(
+      `Already claimed by another college (${conflicts.length}): ${conflicts.join(", ")}`,
+    );
   }
 
   if (importAll) {
