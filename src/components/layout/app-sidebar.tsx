@@ -41,7 +41,7 @@ const SECTIONS: { title: string; items: NavItem[] }[] = [
     items: [
       { href: "/colleges", label: "Colleges", icon: School },
       { href: "/applications", label: "My list", icon: GraduationCap },
-      { href: "/essays", label: "Essays", icon: PenLine, soon: true },
+      { href: "/essays", label: "Essays", icon: PenLine },
       { href: "/recommendations", label: "Recommendations", icon: Mail, soon: true },
     ],
   },
