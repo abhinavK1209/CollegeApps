@@ -10,6 +10,8 @@ import { completion } from "@/features/applications/utils/completion";
 import { RuleFindings } from "@/features/applications/components/rule-findings";
 import { TaskRow } from "@/features/tasks/components/task-row";
 import { ProgressRing } from "@/components/charts/progress-ring";
+import { Confetti } from "@/components/feedback/confetti";
+import { detectMilestones, MILESTONE_COPY } from "@/server/services/milestone.service";
 
 export const dynamic = "force-dynamic";
 export const metadata: Metadata = { title: "Dashboard" };
@@ -27,6 +29,7 @@ export default async function DashboardPage() {
   const nowMs = Date.now();
 
   await refreshRuleFindings(LOCAL_USER_ID);
+  const freshMilestones = await detectMilestones(LOCAL_USER_ID);
 
   const [tasks, counts, applications, findings, deadlines, requirements] =
     await Promise.all([
@@ -79,6 +82,8 @@ export default async function DashboardPage() {
               : `${daysToNext} days until your ${nextDeadline?.application?.college.name} deadline.`}
         </p>
       </header>
+
+      {freshMilestones[0] && <Confetti message={MILESTONE_COPY[freshMilestones[0]]} />}
 
       <RuleFindings findings={findings} />
 

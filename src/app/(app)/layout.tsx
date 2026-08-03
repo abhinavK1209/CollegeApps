@@ -2,6 +2,7 @@ import { AppSidebar } from "@/components/layout/app-sidebar";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { CommandPalette } from "@/components/command/command-palette";
 import { SearchTrigger } from "@/components/command/search-trigger";
+import { MobileNav } from "@/components/layout/mobile-nav";
 
 export default function AppLayout({ children }: { children: React.ReactNode }) {
   return (
@@ -14,6 +15,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
           <ThemeToggle />
         </header>
         <main className="flex-1 overflow-y-auto">{children}</main>
+        <MobileNav />
       </div>
       <CommandPalette />
     </div>

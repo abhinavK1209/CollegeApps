@@ -11,10 +11,13 @@ of asking you to maintain it.
 
 ## Status
 
-🎨 **Design complete. Implementation not started.**
+**v1 shipped.** Eleven working pages, 79 unit tests, deployed on Vercel + Neon.
 
-Full design documents live in [`docs/`](./docs) — start with
+Design documents live in [`docs/`](./docs) — start with
 [`docs/README.md`](./docs/README.md).
+
+Authentication is deliberately deferred; the app runs single-user, with every
+model and service already `userId`-scoped so it drops in without a migration.
 
 ## What makes it not a spreadsheet
 

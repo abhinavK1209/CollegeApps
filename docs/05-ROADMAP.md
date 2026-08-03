@@ -29,7 +29,25 @@ transcript & AP score send tracking · summer melt checklist.
 Counselor workspace (caseload view across students) · consultant multi-client mode ·
 school-district deployment · anonymized outcome analytics.
 
-## 2. Build Order
+## 2. Build Status
+
+| Phase | Scope | Status |
+|---|---|---|
+| 0 | Foundation, tokens, schema, CI | ✅ shipped |
+| 1 | Profile, college explorer, list | ✅ shipped |
+| 2 | Requirement Engine, Rule Engine | ✅ shipped |
+| 3 | Back-scheduler, ranked tasks, dashboard | ✅ shipped |
+| 4 | Essays, reuse engine, pre-submit checks | ✅ shipped |
+| 5 | Recommendations, financial aid, scholarships | ✅ shipped |
+| 6 | Calendar, ⌘K search, analytics | ✅ shipped |
+| 7 | Milestones, loading/error states, mobile | ✅ shipped |
+
+Deferred from v1, in priority order: authentication (the app runs single-user,
+with every model already `userId`-scoped), essay reviewer share links, document
+uploads, notifications and email digests, Kanban drag-and-drop, and the
+deferral/waitlist LOCI workspace.
+
+## 3. Build Order
 
 Strictly dependency-ordered. Each phase ends green: `tsc --noEmit`, lint, tests, and a
 deployable preview. Each bullet is roughly one commit.
@@ -97,7 +115,7 @@ deployable preview. Each bullet is roughly one commit.
 46. a11y audit, mobile pass, performance pass
 47. E2E suite + seeded demo account
 
-## 3. Risk Analysis
+## 4. Risk Analysis
 
 | # | Risk | Impact | L | Mitigation |
 |---|---|---|---|---|
@@ -115,7 +133,7 @@ deployable preview. Each bullet is roughly one commit.
 | R12 | Perf on the dashboard aggregate | Med | Med | Single aggregate endpoint, PPR + streaming, composite indexes, cached derived values |
 | R13 | Cold start for junior users (empty app, no urgency) | Med | Med | Junior-spring mode: list building + rec asks + testing only; hide the senior machinery until it applies |
 
-## 4. Future Features
+## 5. Future Features
 
 **Intelligence** — activity-résumé builder with the Common App's 150-char limits enforced ·
 prompt-similarity clustering across the whole prompt corpus · effort forecasting from the
