@@ -7,6 +7,8 @@ import {
   addCollegeToList,
   removeCollegeFromList,
 } from "@/server/services/application.service";
+import { regenerateChecklist } from "@/server/services/requirement-engine";
+import { refreshRuleFindings } from "@/server/services/rule-engine";
 
 const toggleSchema = z.object({
   collegeId: z.string().min(1),
@@ -34,8 +36,12 @@ export async function toggleCollegeInList(
     if (listed) {
       await removeCollegeFromList(LOCAL_USER_ID, collegeId);
     } else {
-      await addCollegeToList(LOCAL_USER_ID, collegeId, tier);
+      // Adding a school immediately derives its checklist and deadlines — the
+      // student never builds a tracker by hand.
+      const application = await addCollegeToList(LOCAL_USER_ID, collegeId, tier);
+      await regenerateChecklist(LOCAL_USER_ID, application.id);
     }
+    await refreshRuleFindings(LOCAL_USER_ID);
   } catch {
     return { ok: false, error: "Could not update your list. Try again." };
   }

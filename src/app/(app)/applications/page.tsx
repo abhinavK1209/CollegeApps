@@ -3,6 +3,9 @@ import type { Metadata } from "next";
 import type { SchoolTier } from "@prisma/client";
 import { LOCAL_USER_ID } from "@/lib/constants";
 import { listApplications } from "@/server/services/application.service";
+import { getActiveFindings, refreshRuleFindings } from "@/server/services/rule-engine";
+import { RuleFindings } from "@/features/applications/components/rule-findings";
+import { roundLabel } from "@/server/services/round-conventions";
 import { cn } from "@/lib/utils";
 
 // Reads user data from the database, so it must never be prerendered at build
@@ -32,7 +35,13 @@ function formatMoney(cents: number | null): string {
 }
 
 export default async function ApplicationsPage() {
-  const applications = await listApplications(LOCAL_USER_ID);
+  // Re-evaluate on every view: rounds, decisions, and the list itself all change
+  // what conflicts exist, and a stale compliance warning is worse than none.
+  await refreshRuleFindings(LOCAL_USER_ID);
+  const [applications, findings] = await Promise.all([
+    listApplications(LOCAL_USER_ID),
+    getActiveFindings(LOCAL_USER_ID),
+  ]);
 
   const grouped = TIER_ORDER.map((tier) => ({
     tier,
@@ -44,7 +53,6 @@ export default async function ApplicationsPage() {
     target: applications.filter((a) => a.tier === "TARGET").length,
     likely: applications.filter((a) => a.tier === "LIKELY").length,
   };
-  const unbalanced = applications.length >= 4 && counts.likely === 0;
 
   return (
     <div className="mx-auto max-w-4xl px-6 py-8">
@@ -59,17 +67,7 @@ export default async function ApplicationsPage() {
         </p>
       </header>
 
-      {unbalanced && (
-        <div className="border-warning/30 bg-warning-subtle mb-6 rounded-[14px] border p-4">
-          <p className="text-fg text-[13.5px] font-medium">
-            No likely schools on your list.
-          </p>
-          <p className="text-fg-muted mt-1 text-[13px]">
-            A list without schools you are very likely to get into is the most common way
-            this process goes badly. Worth adding two or three.
-          </p>
-        </div>
-      )}
+      <RuleFindings findings={findings} />
 
       {applications.length === 0 ? (
         <div className="border-border rounded-[14px] border border-dashed py-16 text-center">
@@ -95,28 +93,30 @@ export default async function ApplicationsPage() {
               </h2>
               <ul className="border-border divide-border bg-surface divide-y overflow-hidden rounded-[14px] border">
                 {items.map((application) => (
-                  <li
-                    key={application.id}
-                    className="flex items-center justify-between gap-4 px-4 py-3"
-                  >
-                    <div className="min-w-0">
-                      <p className="text-fg truncate text-[14px] font-medium">
-                        {application.college.name}
-                      </p>
-                      <p className="text-fg-muted truncate text-[12.5px]">
-                        {[application.college.city, application.college.state]
-                          .filter(Boolean)
-                          .join(", ")}
-                      </p>
-                    </div>
-                    <div className="flex shrink-0 items-center gap-4">
-                      <span className="text-fg-muted font-mono text-[12.5px] tabular-nums">
-                        {formatMoney(application.college.costOfAttendanceCents)}
-                      </span>
-                      <span className="border-border text-fg-muted rounded-full border px-2 py-0.5 text-[11px]">
-                        {application.status.replace(/_/g, " ").toLowerCase()}
-                      </span>
-                    </div>
+                  <li key={application.id}>
+                    <Link
+                      href={`/applications/${application.id}`}
+                      className="hover:bg-surface-raised flex items-center justify-between gap-4 px-4 py-3 transition-colors duration-100"
+                    >
+                      <div className="min-w-0">
+                        <p className="text-fg truncate text-[14px] font-medium">
+                          {application.college.name}
+                        </p>
+                        <p className="text-fg-muted truncate text-[12.5px]">
+                          {[application.college.city, application.college.state]
+                            .filter(Boolean)
+                            .join(", ")}
+                        </p>
+                      </div>
+                      <div className="flex shrink-0 items-center gap-4">
+                        <span className="text-fg-muted font-mono text-[12.5px] tabular-nums">
+                          {formatMoney(application.college.costOfAttendanceCents)}
+                        </span>
+                        <span className="border-border text-fg-muted rounded-full border px-2 py-0.5 text-[11px]">
+                          {roundLabel(application.round)}
+                        </span>
+                      </div>
+                    </Link>
                   </li>
                 ))}
               </ul>
