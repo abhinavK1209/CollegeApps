@@ -9,6 +9,7 @@ import {
 } from "@/server/services/application.service";
 import { regenerateChecklist } from "@/server/services/requirement-engine";
 import { refreshRuleFindings } from "@/server/services/rule-engine";
+import { backScheduleApplication } from "@/server/services/scheduling.service";
 
 const toggleSchema = z.object({
   collegeId: z.string().min(1),
@@ -40,6 +41,7 @@ export async function toggleCollegeInList(
       // student never builds a tracker by hand.
       const application = await addCollegeToList(LOCAL_USER_ID, collegeId, tier);
       await regenerateChecklist(LOCAL_USER_ID, application.id);
+      await backScheduleApplication(LOCAL_USER_ID, application.id);
     }
     await refreshRuleFindings(LOCAL_USER_ID);
   } catch {
@@ -47,6 +49,8 @@ export async function toggleCollegeInList(
   }
 
   revalidatePath("/colleges");
+  revalidatePath("/dashboard");
+  revalidatePath("/tasks");
   revalidatePath("/applications");
   return { ok: true };
 }

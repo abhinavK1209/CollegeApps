@@ -31,9 +31,9 @@ const SECTIONS: { title: string; items: NavItem[] }[] = [
   {
     title: "Plan",
     items: [
-      { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard, soon: true },
+      { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
       { href: "/calendar", label: "Calendar", icon: CalendarDays, soon: true },
-      { href: "/tasks", label: "Tasks", icon: CheckSquare, soon: true },
+      { href: "/tasks", label: "Tasks", icon: CheckSquare },
     ],
   },
   {

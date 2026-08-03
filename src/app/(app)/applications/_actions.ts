@@ -6,6 +6,7 @@ import { LOCAL_USER_ID } from "@/lib/constants";
 import { db } from "@/server/db";
 import { regenerateChecklist } from "@/server/services/requirement-engine";
 import { refreshRuleFindings } from "@/server/services/rule-engine";
+import { backScheduleApplication } from "@/server/services/scheduling.service";
 
 export type Result = { ok: true } | { ok: false; error: string };
 
@@ -51,10 +52,13 @@ export async function setApplicationRound(
   });
 
   await regenerateChecklist(LOCAL_USER_ID, applicationId);
+  await backScheduleApplication(LOCAL_USER_ID, applicationId);
   await refreshRuleFindings(LOCAL_USER_ID);
 
   revalidatePath("/applications");
   revalidatePath(`/applications/${applicationId}`);
+  revalidatePath("/dashboard");
+  revalidatePath("/tasks");
   return { ok: true };
 }
 
@@ -125,9 +129,12 @@ export async function buildChecklist(applicationId: string): Promise<Result> {
   if (!application) return { ok: false, error: "Application not found." };
 
   await regenerateChecklist(LOCAL_USER_ID, applicationId);
+  await backScheduleApplication(LOCAL_USER_ID, applicationId);
   await refreshRuleFindings(LOCAL_USER_ID);
 
   revalidatePath(`/applications/${applicationId}`);
   revalidatePath("/applications");
+  revalidatePath("/dashboard");
+  revalidatePath("/tasks");
   return { ok: true };
 }
