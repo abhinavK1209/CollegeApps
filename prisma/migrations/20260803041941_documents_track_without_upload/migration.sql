@@ -1,0 +1,6 @@
+-- AlterTable
+ALTER TABLE "Document" ADD COLUMN     "location" TEXT,
+ALTER COLUMN "storageKey" DROP NOT NULL,
+ALTER COLUMN "url" DROP NOT NULL,
+ALTER COLUMN "mimeType" DROP NOT NULL,
+ALTER COLUMN "sizeBytes" DROP NOT NULL;

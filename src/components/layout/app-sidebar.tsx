@@ -11,6 +11,7 @@ import {
   Landmark,
   LayoutDashboard,
   Mail,
+  MessagesSquare,
   PenLine,
   School,
   Settings,
@@ -43,6 +44,7 @@ const SECTIONS: { title: string; items: NavItem[] }[] = [
       { href: "/applications", label: "My list", icon: GraduationCap },
       { href: "/essays", label: "Essays", icon: PenLine },
       { href: "/recommendations", label: "Recommendations", icon: Mail },
+      { href: "/interviews", label: "Interviews", icon: MessagesSquare },
     ],
   },
   {
@@ -55,7 +57,7 @@ const SECTIONS: { title: string; items: NavItem[] }[] = [
   {
     title: "Library",
     items: [
-      { href: "/documents", label: "Documents", icon: FileText, soon: true },
+      { href: "/documents", label: "Documents", icon: FileText },
       { href: "/analytics", label: "Analytics", icon: BarChart3 },
     ],
   },

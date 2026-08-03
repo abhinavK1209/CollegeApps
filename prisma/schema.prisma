@@ -1197,15 +1197,23 @@ model TaskDependency {
 // Documents, notes, calendar, events
 // ─────────────────────────────────────────────────────────────────────────────
 
+/// Most admissions documents are never hosted here: the transcript is sent by the
+/// counselor, the tax return sits in a parent's files, the award letter is a PDF
+/// inside a portal. What matters is that the document exists, where it lives, and
+/// which application or scholarship is waiting on it. The upload fields below are
+/// therefore optional — they fill in only when a file is actually stored.
 model Document {
   id             String       @id @default(cuid())
   userId         String
   name           String
   type           DocumentType
-  storageKey     String       @unique
-  url            String
-  mimeType       String
-  sizeBytes      Int
+  /// Free-text home for anything not uploaded — "counselor's office", "Dad's
+  /// 2025 folder", "IDOC portal".
+  location       String?
+  storageKey     String?      @unique
+  url            String?
+  mimeType       String?
+  sizeBytes      Int?
   applicationId  String?
   scholarshipId  String?
   createdAt      DateTime     @default(now())

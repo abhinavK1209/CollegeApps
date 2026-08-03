@@ -11,7 +11,7 @@ of asking you to maintain it.
 
 ## Status
 
-**v1 shipped.** Eleven working pages, 79 unit tests, deployed on Vercel + Neon.
+**v1 shipped.** Thirteen working pages, 102 unit tests, deployed on Vercel + Neon.
 
 Design documents live in [`docs/`](./docs) — start with
 [`docs/README.md`](./docs/README.md).

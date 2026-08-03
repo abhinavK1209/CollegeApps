@@ -41,11 +41,19 @@ school-district deployment · anonymized outcome analytics.
 | 5 | Recommendations, financial aid, scholarships | ✅ shipped |
 | 6 | Calendar, ⌘K search, analytics | ✅ shipped |
 | 7 | Milestones, loading/error states, mobile | ✅ shipped |
+| 8 | Interview pipeline, document register | ✅ shipped |
+
+Phase 8 closed the two surfaces whose models existed with no UI. Interviews
+track the request deadline separately from the completion deadline, because the
+request window closes first and closes quietly. Documents are a *register* —
+what exists and where it lives — not a file store: most admissions paperwork
+never passes through this app, and the upload fields stay nullable until it
+does.
 
 Deferred from v1, in priority order: authentication (the app runs single-user,
 with every model already `userId`-scoped), essay reviewer share links, document
-uploads, notifications and email digests, Kanban drag-and-drop, and the
-deferral/waitlist LOCI workspace.
+uploads, notifications and email digests, Kanban drag-and-drop, visit logging,
+notes, and the deferral/waitlist LOCI workspace.
 
 ## 3. Build Order
 
@@ -96,7 +104,7 @@ deployable preview. Each bullet is roughly one commit.
 31. Financial aid profile, FAFSA/CSS/IDOC/noncustodial tracking
 32. Award entry + net-price comparison
 33. Scholarships + expected-value ranking
-34. Interviews + visits
+34. Interviews ✅ · visits (deferred)
 
 **Phase 6 — Surfaces**
 35. Dashboard (all widgets, streamed)
@@ -104,7 +112,7 @@ deployable preview. Each bullet is roughly one commit.
 37. Timeline (season scale)
 38. Analytics + Recharts suite
 39. ⌘K command palette + full-text search
-40. Documents (UploadThing) + Notes
+40. Documents — register ✅ · uploads (UploadThing) and Notes (deferred)
 
 **Phase 7 — The layer that makes it feel expensive**
 41. Notifications, inbox, cron jobs, digests
