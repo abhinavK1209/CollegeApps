@@ -42,14 +42,14 @@ const SECTIONS: { title: string; items: NavItem[] }[] = [
       { href: "/colleges", label: "Colleges", icon: School },
       { href: "/applications", label: "My list", icon: GraduationCap },
       { href: "/essays", label: "Essays", icon: PenLine },
-      { href: "/recommendations", label: "Recommendations", icon: Mail, soon: true },
+      { href: "/recommendations", label: "Recommendations", icon: Mail },
     ],
   },
   {
     title: "Money",
     items: [
-      { href: "/financial-aid", label: "Financial aid", icon: Landmark, soon: true },
-      { href: "/scholarships", label: "Scholarships", icon: Trophy, soon: true },
+      { href: "/financial-aid", label: "Financial aid", icon: Landmark },
+      { href: "/scholarships", label: "Scholarships", icon: Trophy },
     ],
   },
   {
